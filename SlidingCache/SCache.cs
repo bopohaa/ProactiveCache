@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Linq;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,43 +7,18 @@ using SlidingCache.Internal;
 
 namespace SlidingCache
 {
-    public static class SlidingCache
-    {
-        public delegate ValueTask<Tval> Get<Tkey, Tval>(Tkey key, object state, CancellationToken cancellation);
-
-        internal struct Options<Tk, Tv>
-        {
-            public readonly ICache<Tk, Tv> ExternalCache;
-            public readonly TimeSpan ExpireTtl;
-            public readonly TimeSpan OutdateTtl;
-
-            public Options(ICache<Tk, Tv> external_cache, TimeSpan expire_ttl, TimeSpan outdate_ttl)
-            {
-                ExternalCache = external_cache;
-                ExpireTtl = expire_ttl;
-                OutdateTtl = outdate_ttl;
-            }
-        }
-
-        internal static Options<Tk, Tv> CreateOptions<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tk, Tv> external_cache = null)
-            => new Options<Tk, Tv>(external_cache, expire_ttl, outdate_ttl);
-
-        internal static SlidingCache<Tk, Tv> CreateCache<Tk, Tv>(this Options<Tk, Tv> options, Get<Tk, Tv> getter)
-            => new SlidingCache<Tk, Tv>(getter, options.ExpireTtl, options.OutdateTtl, options.ExternalCache);
-    }
-
-    public class SlidingCache<Tkey, Tval>
+    public class SCache<Tkey, Tval>
     {
         private readonly ICache<Tkey, Tval> _cache;
         private readonly TimeSpan _outdateTtl;
         private readonly TimeSpan _expireTtl;
-        private readonly SlidingCache.Get<Tkey, Tval> _get;
+        private readonly Func<Tkey, object, CancellationToken, ValueTask<Tval>> _get;
 
-        public SlidingCache(SlidingCache.Get<Tkey, Tval> get, TimeSpan expire_ttl, ICache<Tkey, Tval> external_cache = null) :
+        public SCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ICache<Tkey, Tval> external_cache = null) :
             this(get, expire_ttl, TimeSpan.Zero, external_cache)
         { }
 
-        public SlidingCache(SlidingCache.Get<Tkey, Tval> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> external_cache = null)
+        public SCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
@@ -59,7 +34,7 @@ namespace SlidingCache
             if (!_cache.TryGet(key, out var res))
                 return Add(key, state, cancellation);
 
-            var entry = (SlidingCacheEntry<Tval>)res;
+            var entry = (SCacheEntry<Tval>)res;
             if (_outdateTtl.Ticks > 0 && entry.Outdated())
                 return UpdateAsync(key, entry, state, cancellation);
 
@@ -69,22 +44,20 @@ namespace SlidingCache
         private ValueTask<Tval> Add(Tkey key, object state, CancellationToken cancellation)
         {
             TaskCompletionSource<(bool, Tval)> completion;
-            SlidingCacheEntry<Tval> entry;
-            var lockObject = SlidingCache<Tval>.GetLock(key.GetHashCode());
-            lock (lockObject)
+            lock (SCache<Tkey>.GetLock(key.GetHashCode()))
             {
                 if (_cache.TryGet(key, out var res))
-                    return ((SlidingCacheEntry<Tval>)res).GetValue();
+                    return ((SCacheEntry<Tval>)res).GetValue();
 
                 completion = new TaskCompletionSource<(bool, Tval)>();
-                entry = new SlidingCacheEntry<Tval>(completion.Task, _outdateTtl);
+                var entry = new SCacheEntry<Tval>(completion.Task, _outdateTtl);
                 _cache.Set(key, entry, _expireTtl);
             }
 
-            return AddAsync(key,completion, state, cancellation);
+            return AddAsync(key, completion, state, cancellation);
         }
 
-        private async ValueTask<Tval> UpdateAsync(Tkey key, SlidingCacheEntry<Tval> entry, object state, CancellationToken cancellation)
+        private async ValueTask<Tval> UpdateAsync(Tkey key, SCacheEntry<Tval> entry, object state, CancellationToken cancellation)
         {
             try
             {
@@ -110,7 +83,7 @@ namespace SlidingCache
             }
             catch (Exception ex)
             {
-                try { _cache.Remove(key); } catch { }
+                _cache.Remove(key);
                 completion.SetException(ex);
                 throw;
             }

@@ -12,6 +12,7 @@ namespace SlidingCache
         private readonly int _expirationScanFrequencySec;
         private readonly ConcurrentDictionary<Tk, CacheEntry> _entries;
         private long _nextExpirationScan;
+        private Task _expirationScan;
 
         private struct CacheEntry
         {
@@ -24,19 +25,22 @@ namespace SlidingCache
                 Value = value;
             }
 
-            public bool IsExpired(long now_sec) => now_sec > _expireAt;
+            public bool IsExpired(long now_sec) => now_sec >= _expireAt;
         }
+
+        public int Count => _entries.Count;
 
         public MemoryCache(int expiration_scan_frequency_sec = 600)
         {
             _expirationScanFrequencySec = expiration_scan_frequency_sec;
-            _nextExpirationScan = SlidingCacheTimer.NowSec + _expirationScanFrequencySec;
+            _nextExpirationScan = SCacheTimer.NowSec + _expirationScanFrequencySec;
             _entries = new ConcurrentDictionary<Tk, CacheEntry>();
+            _expirationScan = Task.CompletedTask;
         }
 
         public void Set(Tk key, ICacheEntry<Tv> value, TimeSpan expiration_time)
         {
-            var nowSec = SlidingCacheTimer.NowSec;
+            var nowSec = SCacheTimer.NowSec;
             var entry = new CacheEntry(value, expiration_time, nowSec);
             _entries.AddOrUpdate(key, entry, (k, v) => entry);
 
@@ -45,7 +49,7 @@ namespace SlidingCache
 
         public bool TryGet(Tk key, out ICacheEntry<Tv> value)
         {
-            if (!_entries.TryGetValue(key, out var entry) || entry.IsExpired(SlidingCacheTimer.NowSec))
+            if (!_entries.TryGetValue(key, out var entry) || entry.IsExpired(SCacheTimer.NowSec))
             {
                 value = default;
                 return false;
@@ -60,9 +64,9 @@ namespace SlidingCache
         private void StartScanForExpiredItemsIfNeeded(long now_sec)
         {
             var nextExpirationScan = Volatile.Read(ref _nextExpirationScan);
-            if (now_sec > nextExpirationScan && Interlocked.CompareExchange(ref _nextExpirationScan, now_sec + _expirationScanFrequencySec, nextExpirationScan) == nextExpirationScan)
+            if (now_sec >= nextExpirationScan && _expirationScan.IsCompleted && Interlocked.CompareExchange(ref _nextExpirationScan, now_sec + _expirationScanFrequencySec, nextExpirationScan) == nextExpirationScan)
             {
-                Task.Factory.StartNew(ScanForExpiredItems, this,
+                _expirationScan = Task.Factory.StartNew(ScanForExpiredItems, this,
                     CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
             }
         }
@@ -70,7 +74,7 @@ namespace SlidingCache
         private static void ScanForExpiredItems(object state)
         {
             var cache = (MemoryCache<Tk, Tv>)state;
-            var nowSec = SlidingCacheTimer.NowSec;
+            var nowSec = SCacheTimer.NowSec;
             foreach (var entry in cache._entries.ToArray())
             {
                 if (entry.Value.IsExpired(nowSec))

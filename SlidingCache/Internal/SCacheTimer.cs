@@ -4,7 +4,7 @@ using System.Text;
 
 namespace SlidingCache.Internal
 {
-    internal static class SlidingCacheTimer
+    internal static class SCacheTimer
     {
         private static ulong _nowMs;
         public static ulong NowMs => _nowMs;
@@ -13,7 +13,7 @@ namespace SlidingCache.Internal
 
         private readonly static System.Timers.Timer _timer;
 
-        static SlidingCacheTimer()
+        static SCacheTimer()
         {
             _nowMs = (uint)Environment.TickCount;
             _nowSec = (uint)(_nowMs / 1000);
