@@ -6,7 +6,7 @@
     <Description>Simple "cache-aside" pattern implementation with proactive updating values</Description>
     <Copyright>Copyright © 2020 Nikolay Vorobev</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <RepositoryUrl>https://github.com/bopohaa/SlidingCache</RepositoryUrl>
+    <RepositoryUrl>https://github.com/bopohaa/ProactiveCache</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>cache memorycache look-ahead cache-aside proactive</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
