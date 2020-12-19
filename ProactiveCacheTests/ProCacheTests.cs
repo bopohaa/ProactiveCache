@@ -1,16 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using NUnit.Framework;
+using SlidingCacheTests.Internal;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using NUnit.Framework;
-
-using SlidingCacheTests.Internal;
-
 namespace SlidingCacheTests
 {
-    public class SlidingCacheTests
+    public class ProCacheTests
     {
         private readonly static TimeSpan InfinityTtl = TimeSpan.MaxValue;
         private const int SET_COUNT = 100;
@@ -19,7 +15,7 @@ namespace SlidingCacheTests
         public void GetTest()
         {
             var counter = new Counter();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(Getter);
             var result = new Task<Wrapper>[SET_COUNT];
@@ -39,7 +35,7 @@ namespace SlidingCacheTests
         {
             var setCount = SET_COUNT / 2;
             var counter = new Counter();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(Getter);
             var result = new Task<Wrapper>[setCount * 2];
@@ -64,7 +60,7 @@ namespace SlidingCacheTests
         public void GetAndOutdateTest()
         {
             var counter = new Counter();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, TimeSpan.FromSeconds(1))
                 .CreateCache(Getter);
 
@@ -99,7 +95,7 @@ namespace SlidingCacheTests
         public void GetAndExpireTest()
         {
             var counter = new Counter();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(TimeSpan.FromSeconds(1), TimeSpan.Zero)
                 .CreateCache(Getter);
 
@@ -119,7 +115,7 @@ namespace SlidingCacheTests
         public void GetWithException()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(Getter);
             counter.WithThrow = true;
@@ -150,7 +146,7 @@ namespace SlidingCacheTests
         public void GetOutdatedWithException()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, TimeSpan.FromSeconds(1))
                 .CreateCache(Getter);
 
@@ -184,7 +180,7 @@ namespace SlidingCacheTests
             Assert.AreSame(r1, r5);
         }
 
-        private static async Task<Wrapper> Getter(int k, object state, CancellationToken c)
+        private static async ValueTask<Wrapper> Getter(int k, object state, CancellationToken c)
         {
             var counter = (Counter)state;
             counter.Inc();

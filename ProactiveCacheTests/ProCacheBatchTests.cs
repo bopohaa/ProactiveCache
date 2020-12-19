@@ -1,17 +1,14 @@
-﻿using System;
+﻿using NUnit.Framework;
+using SlidingCacheTests.Internal;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-using NUnit.Framework;
-
-using SlidingCacheTests.Internal;
-
 namespace SlidingCacheTests
 {
-    public class BatchSlidingCacheTests
+    public class ProCacheBatchTests
     {
 
         private readonly static TimeSpan InfinityTtl = TimeSpan.MaxValue;
@@ -21,7 +18,7 @@ namespace SlidingCacheTests
         public void GetTest()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(Getter);
             var keys = Enumerable.Range(0, SET_COUNT);
@@ -51,7 +48,7 @@ namespace SlidingCacheTests
         public void GetAndOutdateTest()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, TimeSpan.FromSeconds(1))
                 .CreateCache(Getter);
             var keys = new[] { 1 };
@@ -87,7 +84,7 @@ namespace SlidingCacheTests
         public void GetAndExpireTest()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(TimeSpan.FromSeconds(1), TimeSpan.Zero)
                 .CreateCache(Getter);
 
@@ -110,7 +107,7 @@ namespace SlidingCacheTests
         public void GetPartialTest()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(GetterPatial);
             var keys = Enumerable.Range(0, SET_COUNT);
@@ -137,7 +134,7 @@ namespace SlidingCacheTests
         public void GetIntersectTest()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(Getter);
             var count = SET_COUNT / 3;
@@ -177,7 +174,7 @@ namespace SlidingCacheTests
         public void GetWithException()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(Getter);
             counter.WithThrow = true;
@@ -208,7 +205,7 @@ namespace SlidingCacheTests
         public void GetOutdatedWithException()
         {
             var counter = new CounterForBatch();
-            var cache = SlidingCacheFactory
+            var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, TimeSpan.FromSeconds(1))
                 .CreateCache(Getter);
 
@@ -242,7 +239,7 @@ namespace SlidingCacheTests
             Assert.AreSame(r1.Value, r5.Value);
         }
 
-        private static async Task<IEnumerable<KeyValuePair<int, Wrapper>>> Getter(IEnumerable<int> keys, object state, CancellationToken c)
+        private static async ValueTask<IEnumerable<KeyValuePair<int, Wrapper>>> Getter(int[] keys, object state, CancellationToken c)
         {
             var counter = (CounterForBatch)state;
             counter.Inc();
@@ -256,7 +253,7 @@ namespace SlidingCacheTests
         }
 
 
-        private static async Task<IEnumerable<KeyValuePair<int, Wrapper>>> GetterPatial(IEnumerable<int> keys, object state, CancellationToken c)
+        private static async ValueTask<IEnumerable<KeyValuePair<int, Wrapper>>> GetterPatial(int[] keys, object state, CancellationToken c)
         {
             var counter = (CounterForBatch)state;
             counter.Inc();

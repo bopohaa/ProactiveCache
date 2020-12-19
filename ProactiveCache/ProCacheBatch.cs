@@ -1,13 +1,12 @@
-﻿using System;
+﻿using ProactiveCache.Internal;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-using SlidingCache.Internal;
-
-namespace SlidingCache
+namespace ProactiveCache
 {
-    public class SCacheBatch<Tkey, Tval>
+    public class ProCacheBatch<Tkey, Tval>
     {
         private struct Result
         {
@@ -22,22 +21,22 @@ namespace SlidingCache
                 _completion = add_completion;
             }
 
-            public Result(SCacheEntry<Tval> cache_entry)
+            public Result(ProCacheEntry<Tval> cache_entry)
             {
                 _state = ResultState.Outdate;
                 _completion = cache_entry;
             }
 
-            public bool Empty(TimeSpan outdated_ttl, out SCacheEntry<Tval> entry)
+            public bool Empty(TimeSpan outdated_ttl, out ProCacheEntry<Tval> entry)
             {
                 switch (_state)
                 {
                     case ResultState.Add:
-                        ((TaskCompletionSource<(bool, Tval)>)_completion).SetResult((false, default));
-                        entry = default;
+                        ((TaskCompletionSource<(bool, Tval)>)_completion).SetResult((false, default(Tval)));
+                        entry = null;
                         return false;
                     case ResultState.Outdate:
-                        entry = (SCacheEntry<Tval>)_completion;
+                        entry = (ProCacheEntry<Tval>)_completion;
                         entry.Reset(outdated_ttl);
                         return true;
                 }
@@ -45,16 +44,16 @@ namespace SlidingCache
                 throw new NotImplementedException();
             }
 
-            public bool Success(Tval val, TimeSpan outdated_ttl, out SCacheEntry<Tval> entry)
+            public bool Success(Tval val, TimeSpan outdated_ttl, out ProCacheEntry<Tval> entry)
             {
                 switch (_state)
                 {
                     case ResultState.Add:
                         ((TaskCompletionSource<(bool, Tval)>)_completion).SetResult((true, val));
-                        entry = default;
+                        entry = null;
                         return false;
                     case ResultState.Outdate:
-                        entry = (SCacheEntry<Tval>)_completion;
+                        entry = (ProCacheEntry<Tval>)_completion;
                         entry.Reset(val, outdated_ttl);
                         return true;
                 }
@@ -70,7 +69,7 @@ namespace SlidingCache
                         ((TaskCompletionSource<(bool, Tval)>)_completion).SetException(ex);
                         return true;
                     case ResultState.Outdate:
-                        ((SCacheEntry<Tval>)_completion).Reset();
+                        ((ProCacheEntry<Tval>)_completion).Reset();
                         return false;
                 }
 
@@ -115,13 +114,13 @@ namespace SlidingCache
         private readonly TimeSpan _outdateTtl;
         private readonly bool _withSlidingUpdate;
         private readonly TimeSpan _expireTtl;
-        private readonly Func<IEnumerable<Tkey>, object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> _get;
+        private readonly Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> _get;
 
-        public SCacheBatch(Func<IEnumerable<Tkey>, object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, ICache<Tkey, Tval> external_cache = null) :
+        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, ICache<Tkey, Tval> external_cache = null) :
             this(get, expire_ttl, TimeSpan.Zero, external_cache)
         { }
 
-        public SCacheBatch(Func<IEnumerable<Tkey>, object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> external_cache = null)
+        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
@@ -134,7 +133,7 @@ namespace SlidingCache
             _withSlidingUpdate = _outdateTtl.Ticks > 0;
         }
 
-        public ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>> Get(IEnumerable<Tkey> keys, object state, CancellationToken cancellation = default)
+        public ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>> Get(IEnumerable<Tkey> keys, object state, CancellationToken cancellation = default(CancellationToken))
         {
             var syncRes = new List<KeyValuePair<Tkey, Tval>>();
             var asyncRes = new AsyncList();
@@ -143,7 +142,7 @@ namespace SlidingCache
             {
                 if (_cache.TryGet(key, out var res))
                 {
-                    var entry = (SCacheEntry<Tval>)res;
+                    var entry = (ProCacheEntry<Tval>)res;
                     if (entry.IsCompleted)
                     {
                         if (_withSlidingUpdate && entry.Outdated())
@@ -158,7 +157,7 @@ namespace SlidingCache
                 {
                     if (GetOrAdd(key, out var result))
                     {
-                        var entry = (SCacheEntry<Tval>)result;
+                        var entry = (ProCacheEntry<Tval>)result;
                         if (entry.IsCompleted)
                             syncRes.TryAddValue(key, entry.GetCompletedValue());
                         else
@@ -176,7 +175,7 @@ namespace SlidingCache
 
         private bool GetOrAdd(Tkey key, out object result)
         {
-            lock (SCache<Tkey>.GetLock(key.GetHashCode()))
+            lock (ProCache<Tkey>.GetLock(key.GetHashCode()))
             {
                 if (_cache.TryGet(key, out var res))
                 {
@@ -185,7 +184,7 @@ namespace SlidingCache
                 }
 
                 var addCompletion = new TaskCompletionSource<(bool, Tval)>();
-                var entry = new SCacheEntry<Tval>(addCompletion.Task, _outdateTtl);
+                var entry = new ProCacheEntry<Tval>(addCompletion.Task, _outdateTtl);
                 _cache.Set(key, entry, _expireTtl);
 
                 result = addCompletion;
@@ -200,7 +199,9 @@ namespace SlidingCache
                 var vals = async_res.Values;
                 try
                 {
-                    foreach (var val in await _get(vals.Keys, state, cancellation).ConfigureAwait(false))
+                    var keys = new Tkey[vals.Count];
+                    vals.Keys.CopyTo(keys, 0);
+                    foreach (var val in await _get(keys, state, cancellation).ConfigureAwait(false))
                     {
                         if (vals.TryGetValue(val.Key, out var result))
                         {

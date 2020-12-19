@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks;
 
-namespace SlidingCache
+namespace ProactiveCache
 {
     public interface ICacheEntry<Tval>
     {

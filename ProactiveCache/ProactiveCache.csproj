@@ -10,7 +10,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>cache memorycache</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <RootNamespace>SlidingCache</RootNamespace>
+    <RootNamespace>ProactiveCache</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

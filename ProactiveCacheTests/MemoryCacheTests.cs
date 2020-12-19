@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using NUnit.Framework;
+using System;
 using System.Threading.Tasks;
-
-using NUnit.Framework;
 
 namespace SlidingCacheTests
 {
@@ -12,7 +9,7 @@ namespace SlidingCacheTests
         private readonly static TimeSpan InfinityTtl = TimeSpan.MaxValue;
         private const int SET_COUNT = 100;
 
-        private class TestCacheEntry : SlidingCache.ICacheEntry<float>
+        private class TestCacheEntry : ProactiveCache.ICacheEntry<float>
         {
             private readonly Task<float> _value;
             public bool IsCompleted => _value.IsCompleted;
@@ -25,7 +22,7 @@ namespace SlidingCacheTests
         [Test]
         public void SetTest()
         {
-            var cache = new SlidingCache.MemoryCache<int, float>(0);
+            var cache = new ProactiveCache.MemoryCache<int, float>(0);
             for (var i = 0; i < SET_COUNT; i++)
                 cache.Set(i, new TestCacheEntry(Task.FromResult((float)i)), InfinityTtl);
 
@@ -35,7 +32,7 @@ namespace SlidingCacheTests
         [Test]
         public void TryGetTest()
         {
-            var cache = new SlidingCache.MemoryCache<int, float>(0);
+            var cache = new ProactiveCache.MemoryCache<int, float>(0);
             var values = AddToCache(cache, InfinityTtl, 0, SET_COUNT);
 
             for (var i = 0; i < SET_COUNT; i++)
@@ -49,7 +46,7 @@ namespace SlidingCacheTests
         [Test]
         public void RemoveTest()
         {
-            var cache = new SlidingCache.MemoryCache<int, float>();
+            var cache = new ProactiveCache.MemoryCache<int, float>();
             var values = AddToCache(cache, InfinityTtl, 0, SET_COUNT);
             var removeCnt = SET_COUNT / 2;
 
@@ -71,7 +68,7 @@ namespace SlidingCacheTests
         public void ExpirationTtlTest()
         {
             var expiredCnt = SET_COUNT / 2;
-            var cache = new SlidingCache.MemoryCache<int, float>(2);
+            var cache = new ProactiveCache.MemoryCache<int, float>(2);
             var values = AddToCache(cache, TimeSpan.FromSeconds(1), 0, expiredCnt);
             values = AddToCache(cache, InfinityTtl, expiredCnt, SET_COUNT, values);
 
@@ -98,7 +95,7 @@ namespace SlidingCacheTests
             Assert.AreEqual(SET_COUNT - expiredCnt, cache.Count);
         }
 
-        private static TestCacheEntry[] AddToCache(SlidingCache.MemoryCache<int, float> cache, TimeSpan expiration_ttl, int from_key, int to_key, TestCacheEntry[] tmp = null)
+        private static TestCacheEntry[] AddToCache(ProactiveCache.MemoryCache<int, float> cache, TimeSpan expiration_ttl, int from_key, int to_key, TestCacheEntry[] tmp = null)
         {
             if (!(tmp is null) && tmp.Length < to_key)
                 Array.Resize(ref tmp, to_key);

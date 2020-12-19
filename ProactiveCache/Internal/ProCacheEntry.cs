@@ -2,9 +2,9 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace SlidingCache.Internal
+namespace ProactiveCache.Internal
 {
-    internal class SCacheEntry<Tval> : ICacheEntry<Tval>
+    internal class ProCacheEntry<Tval> : ICacheEntry<Tval>
     {
         private const long OUTDATED_FLAG = 0x4000000000000000;
         private long _outdatedSec;
@@ -27,13 +27,13 @@ namespace SlidingCache.Internal
         internal (bool, Tval) GetCompletedValue()
             => Volatile.Read(ref _hasValue) ? (!Volatile.Read(ref _isEmpty), (Tval)_value) : _valueAsTask.Result;
 
-        internal SCacheEntry(Task<(bool, Tval)> value, TimeSpan outdated_ttl)
+        internal ProCacheEntry(Task<(bool, Tval)> value, TimeSpan outdated_ttl)
         {
             _valueAsTask = value;
             _outdatedSec = GetOutdatedSec(outdated_ttl);
         }
 
-        internal SCacheEntry(TimeSpan outdated_ttl)
+        internal ProCacheEntry(TimeSpan outdated_ttl)
         {
             _isEmpty = true;
             _hasValue = true;
@@ -43,7 +43,7 @@ namespace SlidingCache.Internal
         internal bool Outdated()
         {
             var outdated = Volatile.Read(ref _outdatedSec);
-            if (outdated > SCacheTimer.NowSec || !_valueAsTask.IsCompleted)
+            if (outdated > ProCacheTimer.NowSec || !_valueAsTask.IsCompleted)
                 return false;
 
             return Interlocked.CompareExchange(ref _outdatedSec, outdated | OUTDATED_FLAG, outdated) == outdated;
@@ -70,6 +70,6 @@ namespace SlidingCache.Internal
 
 
         private static long GetOutdatedSec(TimeSpan outdated_ttl)
-            => SCacheTimer.NowSec + outdated_ttl.Ticks / TimeSpan.TicksPerSecond;
+            => ProCacheTimer.NowSec + outdated_ttl.Ticks / TimeSpan.TicksPerSecond;
     }
 }

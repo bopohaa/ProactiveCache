@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace SlidingCache.Internal
+namespace ProactiveCache.Internal
 {
-    internal static class SCacheTimer
+    internal static class ProCacheTimer
     {
         private static ulong _nowMs;
         public static ulong NowMs => _nowMs;
@@ -13,7 +11,7 @@ namespace SlidingCache.Internal
 
         private readonly static System.Timers.Timer _timer;
 
-        static SCacheTimer()
+        static ProCacheTimer()
         {
             _nowMs = (uint)Environment.TickCount;
             _nowSec = (uint)(_nowMs / 1000);

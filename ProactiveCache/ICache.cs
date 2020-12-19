@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace SlidingCache
+namespace ProactiveCache
 {
     public interface ICache<Tkey, Tval>
     {

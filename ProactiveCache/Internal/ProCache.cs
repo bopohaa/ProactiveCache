@@ -2,9 +2,9 @@
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace SlidingCache.Internal
+namespace ProactiveCache.Internal
 {
-    internal static class SCache
+    internal static class ProCache
     {
         internal static ValueTask<T> AsValueTask<T>(this Task<T> task) => new ValueTask<T>(task);
 
@@ -15,7 +15,7 @@ namespace SlidingCache.Internal
         }
     }
 
-    internal static class SCache<Tk>
+    internal static class ProCache<Tk>
     {
         static object[] _locks = Enumerable.Range(0, 256).Select(_ => new object()).ToArray();
 

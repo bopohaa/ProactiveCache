@@ -1,24 +1,22 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using ProactiveCache.Internal;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using SlidingCache.Internal;
-
-namespace SlidingCache
+namespace ProactiveCache
 {
-    public class SCache<Tkey, Tval>
+    public class ProCache<Tkey, Tval>
     {
         private readonly ICache<Tkey, Tval> _cache;
         private readonly TimeSpan _outdateTtl;
         private readonly TimeSpan _expireTtl;
         private readonly Func<Tkey, object, CancellationToken, ValueTask<Tval>> _get;
 
-        public SCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ICache<Tkey, Tval> external_cache = null) :
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ICache<Tkey, Tval> external_cache = null) :
             this(get, expire_ttl, TimeSpan.Zero, external_cache)
         { }
 
-        public SCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> external_cache = null)
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
@@ -29,12 +27,12 @@ namespace SlidingCache
             _get = get;
         }
 
-        public ValueTask<Tval> Get(Tkey key, object state, CancellationToken cancellation = default)
+        public ValueTask<Tval> Get(Tkey key, object state, CancellationToken cancellation = default(CancellationToken))
         {
             if (!_cache.TryGet(key, out var res))
                 return Add(key, state, cancellation);
 
-            var entry = (SCacheEntry<Tval>)res;
+            var entry = (ProCacheEntry<Tval>)res;
             if (_outdateTtl.Ticks > 0 && entry.Outdated())
                 return UpdateAsync(key, entry, state, cancellation);
 
@@ -44,20 +42,20 @@ namespace SlidingCache
         private ValueTask<Tval> Add(Tkey key, object state, CancellationToken cancellation)
         {
             TaskCompletionSource<(bool, Tval)> completion;
-            lock (SCache<Tkey>.GetLock(key.GetHashCode()))
+            lock (ProCache<Tkey>.GetLock(key.GetHashCode()))
             {
                 if (_cache.TryGet(key, out var res))
-                    return ((SCacheEntry<Tval>)res).GetValue();
+                    return ((ProCacheEntry<Tval>)res).GetValue();
 
                 completion = new TaskCompletionSource<(bool, Tval)>();
-                var entry = new SCacheEntry<Tval>(completion.Task, _outdateTtl);
+                var entry = new ProCacheEntry<Tval>(completion.Task, _outdateTtl);
                 _cache.Set(key, entry, _expireTtl);
             }
 
             return AddAsync(key, completion, state, cancellation);
         }
 
-        private async ValueTask<Tval> UpdateAsync(Tkey key, SCacheEntry<Tval> entry, object state, CancellationToken cancellation)
+        private async ValueTask<Tval> UpdateAsync(Tkey key, ProCacheEntry<Tval> entry, object state, CancellationToken cancellation)
         {
             try
             {

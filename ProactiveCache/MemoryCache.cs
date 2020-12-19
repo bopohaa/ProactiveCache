@@ -1,11 +1,10 @@
-﻿using System;
+﻿using ProactiveCache.Internal;
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 
-using SlidingCache.Internal;
-
-namespace SlidingCache
+namespace ProactiveCache
 {
     public class MemoryCache<Tk, Tv> : ICache<Tk, Tv>
     {
@@ -33,14 +32,14 @@ namespace SlidingCache
         public MemoryCache(int expiration_scan_frequency_sec = 600)
         {
             _expirationScanFrequencySec = expiration_scan_frequency_sec;
-            _nextExpirationScan = SCacheTimer.NowSec + _expirationScanFrequencySec;
+            _nextExpirationScan = ProCacheTimer.NowSec + _expirationScanFrequencySec;
             _entries = new ConcurrentDictionary<Tk, CacheEntry>();
             _expirationScan = Task.CompletedTask;
         }
 
         public void Set(Tk key, ICacheEntry<Tv> value, TimeSpan expiration_time)
         {
-            var nowSec = SCacheTimer.NowSec;
+            var nowSec = ProCacheTimer.NowSec;
             var entry = new CacheEntry(value, expiration_time, nowSec);
             _entries.AddOrUpdate(key, entry, (k, v) => entry);
 
@@ -49,9 +48,9 @@ namespace SlidingCache
 
         public bool TryGet(Tk key, out ICacheEntry<Tv> value)
         {
-            if (!_entries.TryGetValue(key, out var entry) || entry.IsExpired(SCacheTimer.NowSec))
+            if (!_entries.TryGetValue(key, out var entry) || entry.IsExpired(ProCacheTimer.NowSec))
             {
-                value = default;
+                value = null;
                 return false;
             }
 
@@ -74,7 +73,7 @@ namespace SlidingCache
         private static void ScanForExpiredItems(object state)
         {
             var cache = (MemoryCache<Tk, Tv>)state;
-            var nowSec = SCacheTimer.NowSec;
+            var nowSec = ProCacheTimer.NowSec;
             foreach (var entry in cache._entries.ToArray())
             {
                 if (entry.Value.IsExpired(nowSec))
