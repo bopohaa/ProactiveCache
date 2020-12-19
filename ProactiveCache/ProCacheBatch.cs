@@ -133,6 +133,9 @@ namespace ProactiveCache
             _withSlidingUpdate = _outdateTtl.Ticks > 0;
         }
 
+        public ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>> Get(IEnumerable<Tkey> keys, CancellationToken cancellation = default(CancellationToken))
+            => Get(keys, null, cancellation);
+
         public ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>> Get(IEnumerable<Tkey> keys, object state, CancellationToken cancellation = default(CancellationToken))
         {
             var syncRes = new List<KeyValuePair<Tkey, Tval>>();

@@ -1,6 +1,8 @@
 ﻿using NUnit.Framework;
 using SlidingCacheTests.Internal;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,6 +12,20 @@ namespace SlidingCacheTests
     {
         private readonly static TimeSpan InfinityTtl = TimeSpan.MaxValue;
         private const int SET_COUNT = 100;
+
+        [Test]
+        public void Example()
+        {
+            ValueTask<float> getter(int key, CancellationToken cancellation) => new ValueTask<float>(key);
+
+            var cache = ProCacheFactory
+                .CreateOptions<int, float>(expire_ttl: TimeSpan.FromSeconds(120), outdate_ttl: TimeSpan.FromSeconds(60))
+                .CreateCache(getter);
+
+            var result = cache.Get(1).Result;
+
+            Assert.AreEqual(result, (float)1);
+        }
 
         [Test]
         public void GetTest()

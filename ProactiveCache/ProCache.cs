@@ -27,6 +27,9 @@ namespace ProactiveCache
             _get = get;
         }
 
+        public ValueTask<Tval> Get(Tkey key, CancellationToken cancellation = default(CancellationToken))
+            => Get(key, null, cancellation);
+
         public ValueTask<Tval> Get(Tkey key, object state, CancellationToken cancellation = default(CancellationToken))
         {
             if (!_cache.TryGet(key, out var res))

@@ -15,6 +15,23 @@ namespace SlidingCacheTests
         private const int SET_COUNT = 100;
 
         [Test]
+        public void Example()
+        {
+            ValueTask<IEnumerable<KeyValuePair<int, float>>> getter(int[] keys, CancellationToken cancellation)
+                => new ValueTask<IEnumerable<KeyValuePair<int, float>>>(keys.Select(k => new KeyValuePair<int, float>(k, k)));
+
+            var cache = ProCacheFactory
+                .CreateOptions<int, float>(expire_ttl: TimeSpan.FromSeconds(120), outdate_ttl: TimeSpan.FromSeconds(60))
+                .CreateCache(getter);
+
+            var from1to3 = cache.Get(Enumerable.Range(1, 3)).Result;
+            var from1to6 = cache.Get(Enumerable.Range(1, 6)).Result;
+
+            CollectionAssert.AreEqual(new[] { KeyValuePair.Create(1, 1f), KeyValuePair.Create(2, 2f), KeyValuePair.Create(3, 3f) }, from1to3);
+            CollectionAssert.AreEqual(new[] { KeyValuePair.Create(1, 1f), KeyValuePair.Create(2, 2f), KeyValuePair.Create(3, 3f), KeyValuePair.Create(4, 4f), KeyValuePair.Create(5, 5f), KeyValuePair.Create(6, 6f) }, from1to6);
+        }
+
+        [Test]
         public void GetTest()
         {
             var counter = new CounterForBatch();

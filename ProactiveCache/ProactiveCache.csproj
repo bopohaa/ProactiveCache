@@ -3,12 +3,12 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <Authors>Nikolay Vorobev</Authors>
-    <Description>Cache with a sliding background updating values</Description>
+    <Description>Simple "cache-aside" pattern implementation with proactive updating values</Description>
     <Copyright>Copyright © 2020 Nikolay Vorobev</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <RepositoryUrl>https://github.com/bopohaa/SlidingCache</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>cache memorycache</PackageTags>
+    <PackageTags>cache memorycache look-ahead cache-aside proactive</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <RootNamespace>ProactiveCache</RootNamespace>
   </PropertyGroup>
