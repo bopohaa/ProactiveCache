@@ -19,6 +19,6 @@ namespace ProactiveCache.Internal
     {
         static object[] _locks = Enumerable.Range(0, 256).Select(_ => new object()).ToArray();
 
-        public static object GetLock(int hash) => _locks[hash % 256];
+        public static object GetLock(uint hash) => _locks[hash % 256];
     }
 }

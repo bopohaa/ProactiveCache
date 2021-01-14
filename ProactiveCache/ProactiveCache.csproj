@@ -11,6 +11,7 @@
     <PackageTags>cache memorycache look-ahead cache-aside proactive</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <RootNamespace>ProactiveCache</RootNamespace>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

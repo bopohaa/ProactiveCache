@@ -178,7 +178,7 @@ namespace ProactiveCache
 
         private bool GetOrAdd(Tkey key, out object result)
         {
-            lock (ProCache<Tkey>.GetLock(key.GetHashCode()))
+            lock (ProCache<Tkey>.GetLock((uint)key.GetHashCode()))
             {
                 if (_cache.TryGet(key, out var res))
                 {

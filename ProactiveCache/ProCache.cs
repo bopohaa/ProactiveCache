@@ -45,7 +45,7 @@ namespace ProactiveCache
         private ValueTask<Tval> Add(Tkey key, object state, CancellationToken cancellation)
         {
             TaskCompletionSource<(bool, Tval)> completion;
-            lock (ProCache<Tkey>.GetLock(key.GetHashCode()))
+            lock (ProCache<Tkey>.GetLock((uint)key.GetHashCode()))
             {
                 if (_cache.TryGet(key, out var res))
                     return ((ProCacheEntry<Tval>)res).GetValue();
