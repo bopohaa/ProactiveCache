@@ -1,6 +1,8 @@
 ﻿using ProactiveCache.Internal;
+
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,6 +14,7 @@ namespace ProactiveCache
         private readonly ConcurrentDictionary<Tk, CacheEntry> _entries;
         private long _nextExpirationScan;
         private Task _expirationScan;
+        private readonly Action<Tk, ICacheEntry<Tv>> _expired;
 
         private struct CacheEntry
         {
@@ -29,12 +32,13 @@ namespace ProactiveCache
 
         public int Count => _entries.Count;
 
-        public MemoryCache(int expiration_scan_frequency_sec = 600)
+        public MemoryCache(Action<Tk, ICacheEntry<Tv>> expired = null, int expiration_scan_frequency_sec = 600)
         {
             _expirationScanFrequencySec = expiration_scan_frequency_sec;
             _nextExpirationScan = ProCacheTimer.NowSec + _expirationScanFrequencySec;
             _entries = new ConcurrentDictionary<Tk, CacheEntry>();
             _expirationScan = Task.CompletedTask;
+            _expired = expired;
         }
 
         public void Set(Tk key, ICacheEntry<Tv> value, TimeSpan expiration_time)
@@ -74,11 +78,16 @@ namespace ProactiveCache
         {
             var cache = (MemoryCache<Tk, Tv>)state;
             var nowSec = ProCacheTimer.NowSec;
+            var expired = new List<(Tk, ICacheEntry<Tv>)>();
             foreach (var entry in cache._entries.ToArray())
             {
                 if (entry.Value.IsExpired(nowSec))
-                    cache._entries.TryRemove(entry.Key, out var _);
+                    if (cache._entries.TryRemove(entry.Key, out var val))
+                        expired.Add((entry.Key, val.Value));
             }
+            if (expired.Count > 0 && cache._expired != null)
+                foreach (var item in expired)
+                    try { cache._expired(item.Item1, item.Item2); } catch { }
         }
     }
 }
