@@ -1,5 +1,7 @@
 ﻿using NUnit.Framework;
+
 using SlidingCacheTests.Internal;
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -130,7 +132,7 @@ namespace SlidingCacheTests
         [Test]
         public void GetWithException()
         {
-            var counter = new CounterForBatch();
+            var counter = new Counter();
             var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, InfinityTtl)
                 .CreateCache(Getter);
@@ -161,7 +163,7 @@ namespace SlidingCacheTests
         [Test]
         public void GetOutdatedWithException()
         {
-            var counter = new CounterForBatch();
+            var counter = new Counter();
             var cache = ProCacheFactory
                 .CreateOptions<int, Wrapper>(InfinityTtl, TimeSpan.FromSeconds(1))
                 .CreateCache(Getter);
@@ -196,6 +198,41 @@ namespace SlidingCacheTests
             Assert.AreSame(r1, r5);
         }
 
+        [Test]
+        public void HookTest()
+        {
+            int miss = 0, outdated = 0, expired = 0;
+            ProactiveCache.ProCacheHook<int, float> hook = (k, v, r) =>
+            {
+                switch (r)
+                {
+                    case ProactiveCache.ProCacheHookReason.Miss:
+                        Interlocked.Increment(ref miss);
+                        break;
+                    case ProactiveCache.ProCacheHookReason.Outdated:
+                        Interlocked.Increment(ref outdated);
+                        break;
+                    case ProactiveCache.ProCacheHookReason.Expired:
+                        Interlocked.Increment(ref expired);
+                        break;
+                }
+            };
+            var cache = ProCacheFactory
+                .CreateOptions<int, float>(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), 2)
+                .CreateCache(SimpleGetter, hook);
+
+            cache.Get(1);
+            Task.Delay(1100).Wait();
+            cache.Get(1);
+            Task.Delay(2100).Wait();
+            cache.Get(2);
+            Task.Delay(100).Wait();
+
+            Assert.AreEqual(2, miss);
+            Assert.AreEqual(1, outdated);
+            Assert.AreEqual(1, expired);
+        }
+
         private static async ValueTask<Wrapper> Getter(int k, object state, CancellationToken c)
         {
             var counter = (Counter)state;
@@ -206,6 +243,12 @@ namespace SlidingCacheTests
             counter.TryDoThrow();
 
             return new Wrapper(k);
+        }
+
+        private static async ValueTask<float> SimpleGetter(int k, object state, CancellationToken c)
+        {
+            await Task.Delay(10);
+            return k;
         }
 
     }

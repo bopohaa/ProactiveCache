@@ -1,5 +1,9 @@
 ﻿using NUnit.Framework;
+
+using ProactiveCache;
+
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace SlidingCacheTests
@@ -93,6 +97,42 @@ namespace SlidingCacheTests
             Task.Delay(500).Wait();
 
             Assert.AreEqual(SET_COUNT - expiredCnt, cache.Count);
+        }
+
+        [Test]
+        public void ExpireHookTest()
+        {
+            var expired = new List<KeyValuePair<int, ProactiveCache.ICacheEntry<float>>>();
+            ProactiveCache.CacheExpiredHook<int, float> expireHook = i => expired.AddRange(i);
+            var expiredCnt = SET_COUNT / 2;
+            var cache = new ProactiveCache.MemoryCache<int, float>(2, expireHook);
+            var values = AddToCache(cache, TimeSpan.FromSeconds(1), 0, expiredCnt);
+            values = AddToCache(cache, InfinityTtl, expiredCnt, SET_COUNT, values);
+
+            Task.Delay(1500).Wait();
+            TryCacheClean(expiredCnt, values[expiredCnt], cache);
+
+            Assert.IsTrue(expired.Count == 0);
+
+            Task.Delay(1000).Wait();
+            TryCacheClean(expiredCnt, values[expiredCnt], cache);
+
+            Assert.IsTrue(expired.Count == expiredCnt);
+
+            foreach (var i in expired)
+                Assert.Less(i.Key, expiredCnt);
+            expired.Clear();
+
+            Task.Delay(500).Wait();
+            TryCacheClean(expiredCnt, values[expiredCnt], cache);
+
+            Assert.IsTrue(expired.Count == 0);
+        }
+
+        private static void TryCacheClean(int set_key, ICacheEntry<float> set_value, MemoryCache<int, float> cache)
+        {
+            cache.Set(set_key, set_value, InfinityTtl);
+            Task.Delay(100).Wait();
         }
 
         private static TestCacheEntry[] AddToCache(ProactiveCache.MemoryCache<int, float> cache, TimeSpan expiration_ttl, int from_key, int to_key, TestCacheEntry[] tmp = null)

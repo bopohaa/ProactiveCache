@@ -8,33 +8,33 @@ namespace ProactiveCache
 {
     public class ProCache<Tkey, Tval>
     {
-        public delegate ICache<Tkey, Tval> ExternalCacheFactory(Action<Tkey, ICacheEntry<Tval>> expired_delegate);
+        private const int DEFAULT_CACHE_EXPIRATION_SEC = 600;
 
         private readonly ICache<Tkey, Tval> _cache;
         private readonly TimeSpan _outdateTtl;
         private readonly TimeSpan _expireTtl;
         private readonly Func<Tkey, object, CancellationToken, ValueTask<Tval>> _get;
-        private readonly ProCacheCallback<Tkey, Tval> _callback;
+        private readonly ProCacheHook<Tkey, Tval> _hook;
 
-        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ProCacheCallback<Tkey, Tval> callback = null, ExternalCacheFactory external_cache = null) :
-            this(get, expire_ttl, TimeSpan.Zero, callback, external_cache)
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey,Tval> external_cache = null) :
+            this(get, expire_ttl, TimeSpan.Zero, hook, external_cache)
         { }
 
-        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProCacheCallback<Tkey, Tval> callback = null, ExternalCacheFactory external_cache = null)
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, Tval> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
 
-            Action<Tkey, ICacheEntry<Tval>> cacheExpired = null;
-            if (callback != null)
+            CacheExpiredHook<Tkey, Tval> cacheExpired = null;
+            if (hook != null)
             {
-                cacheExpired = (k, v) => callback(k, v, ProCacheCallbackReason.Expired);
-                _callback = (k, v, r) => Task.Factory.StartNew(DoCallback, (callback, k, v, r));
+                cacheExpired = e => { foreach (var i in e) try { hook(i.Key, i.Value, ProCacheHookReason.Expired); } catch { } };
+                _hook = (k, v, r) => Task.Factory.StartNew(DoCallback, (hook, k, v, r));
             }
             else
-                _callback = null;
+                _hook = null;
 
-            _cache = external_cache == null ? new MemoryCache<Tkey, Tval>(cacheExpired) : external_cache(cacheExpired);
+            _cache = external_cache == null ? new MemoryCache<Tkey, Tval>(DEFAULT_CACHE_EXPIRATION_SEC, cacheExpired) : external_cache(cacheExpired);
             _outdateTtl = outdate_ttl;
             _expireTtl = expire_ttl;
             _get = get;
@@ -76,20 +76,17 @@ namespace ProactiveCache
         {
             try
             {
-                _callback?.Invoke(key, entry, ProCacheCallbackReason.Outdated);
+                _hook?.Invoke(key, entry, ProCacheHookReason.Outdated);
 
                 var res = await _get(key, state, cancellation).ConfigureAwait(false);
                 entry.Reset(res, _outdateTtl);
                 _cache.Set(key, entry, _expireTtl);
-
-                _callback?.Invoke(key, entry, ProCacheCallbackReason.Updated);
 
                 return res;
             }
             catch
             {
                 entry.Reset();
-                _callback?.Invoke(key, entry, ProCacheCallbackReason.Error);
                 throw;
             }
         }
@@ -98,12 +95,10 @@ namespace ProactiveCache
         {
             try
             {
-                _callback?.Invoke(key, entry, ProCacheCallbackReason.Miss);
+                _hook?.Invoke(key, entry, ProCacheHookReason.Miss);
 
                 var res = await _get(key, state, cancellation).ConfigureAwait(false);
                 completion.SetResult((true, res));
-
-                _callback?.Invoke(key, entry, ProCacheCallbackReason.Updated);
 
                 return res;
             }
@@ -111,14 +106,13 @@ namespace ProactiveCache
             {
                 _cache.Remove(key);
                 completion.SetException(ex);
-                _callback?.Invoke(key, entry, ProCacheCallbackReason.Error);
                 throw;
             }
         }
 
         private static void DoCallback(object state)
         {
-            var (callback, key, value, reason) = ((ProCacheCallback<Tkey, Tval>, Tkey, ICacheEntry<Tval>, ProCacheCallbackReason))state;
+            var (callback, key, value, reason) = ((ProCacheHook<Tkey, Tval>, Tkey, ICacheEntry<Tval>, ProCacheHookReason))state;
             callback(key, value, reason);
         }
     }

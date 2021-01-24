@@ -14,7 +14,7 @@ namespace ProactiveCache
         private readonly ConcurrentDictionary<Tk, CacheEntry> _entries;
         private long _nextExpirationScan;
         private Task _expirationScan;
-        private readonly Action<Tk, ICacheEntry<Tv>> _expired;
+        private readonly CacheExpiredHook<Tk,Tv> _expired;
 
         private struct CacheEntry
         {
@@ -32,7 +32,7 @@ namespace ProactiveCache
 
         public int Count => _entries.Count;
 
-        public MemoryCache(Action<Tk, ICacheEntry<Tv>> expired = null, int expiration_scan_frequency_sec = 600)
+        public MemoryCache(int expiration_scan_frequency_sec = 600, CacheExpiredHook<Tk, Tv> expired = null)
         {
             _expirationScanFrequencySec = expiration_scan_frequency_sec;
             _nextExpirationScan = ProCacheTimer.NowSec + _expirationScanFrequencySec;
@@ -78,16 +78,15 @@ namespace ProactiveCache
         {
             var cache = (MemoryCache<Tk, Tv>)state;
             var nowSec = ProCacheTimer.NowSec;
-            var expired = new List<(Tk, ICacheEntry<Tv>)>();
+            var expired = new List<KeyValuePair<Tk, ICacheEntry<Tv>>>();
             foreach (var entry in cache._entries.ToArray())
             {
                 if (entry.Value.IsExpired(nowSec))
                     if (cache._entries.TryRemove(entry.Key, out var val))
-                        expired.Add((entry.Key, val.Value));
+                        expired.Add(new KeyValuePair<Tk, ICacheEntry<Tv>>(entry.Key, val.Value));
             }
             if (expired.Count > 0 && cache._expired != null)
-                foreach (var item in expired)
-                    try { cache._expired(item.Item1, item.Item2); } catch { }
+                Task.Factory.StartNew(c => cache._expired(expired), null, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
         }
     }
 }

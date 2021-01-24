@@ -1,4 +1,5 @@
 ﻿using ProactiveCache.Internal;
+
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -8,6 +9,8 @@ namespace ProactiveCache
 {
     public class ProCacheBatch<Tkey, Tval>
     {
+        private const int DEFAULT_CACHE_EXPIRATION_SEC = 600;
+
         private struct Result
         {
             private enum ResultState { Add, Outdate }
@@ -115,17 +118,27 @@ namespace ProactiveCache
         private readonly bool _withSlidingUpdate;
         private readonly TimeSpan _expireTtl;
         private readonly Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> _get;
+        private readonly ProCacheBatchHook<Tkey, Tval> _hook;
 
-        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, ICache<Tkey, Tval> external_cache = null) :
-            this(get, expire_ttl, TimeSpan.Zero, external_cache)
+        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, ProCacheBatchHook<Tkey, Tval> hook, ExternalCacheFactory<Tkey, Tval> external_cache = null) :
+            this(get, expire_ttl, TimeSpan.Zero, hook, external_cache)
         { }
 
-        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ICache<Tkey, Tval> external_cache = null)
+        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProCacheBatchHook<Tkey, Tval> hook, ExternalCacheFactory<Tkey, Tval> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
 
-            _cache = external_cache ?? new MemoryCache<Tkey, Tval>();
+            CacheExpiredHook<Tkey, Tval> cacheExpired = null;
+            if (hook != null)
+            {
+                cacheExpired = e => hook(e, ProCacheHookReason.Expired);
+                _hook = (i, r) => Task.Factory.StartNew(DoCallback, (hook, i, r));
+            }
+            else
+                _hook = null;
+
+            _cache = external_cache == null ? new MemoryCache<Tkey, Tval>(DEFAULT_CACHE_EXPIRATION_SEC, cacheExpired) : external_cache(cacheExpired);
             _outdateTtl = outdate_ttl;
             _expireTtl = expire_ttl;
             _get = get;
@@ -141,6 +154,8 @@ namespace ProactiveCache
             var syncRes = new List<KeyValuePair<Tkey, Tval>>();
             var asyncRes = new AsyncList();
             var waitRes = new WaitList();
+            List<KeyValuePair<Tkey, ICacheEntry<Tval>>> miss = null;
+            List<KeyValuePair<Tkey, ICacheEntry<Tval>>> outdated = null;
             foreach (var key in keys)
             {
                 if (_cache.TryGet(key, out var res))
@@ -149,7 +164,11 @@ namespace ProactiveCache
                     if (entry.IsCompleted)
                     {
                         if (_withSlidingUpdate && entry.Outdated())
+                        {
                             asyncRes.Add(key, new Result(entry));
+                            if (_hook != null)
+                                (outdated = outdated ?? new List<KeyValuePair<Tkey, ICacheEntry<Tval>>>()).Add(new KeyValuePair<Tkey, ICacheEntry<Tval>>(key, entry));
+                        }
                         else
                             syncRes.TryAddValue(key, entry.GetCompletedValue());
                     }
@@ -158,7 +177,7 @@ namespace ProactiveCache
                 }
                 else
                 {
-                    if (GetOrAdd(key, out var result))
+                    if (GetOrAdd(key, out var result, ref miss))
                     {
                         var entry = (ProCacheEntry<Tval>)result;
                         if (entry.IsCompleted)
@@ -171,12 +190,20 @@ namespace ProactiveCache
                 }
             }
 
+            if (_hook != null)
+            {
+                if (miss != null)
+                    _hook(miss, ProCacheHookReason.Miss);
+                if (outdated != null)
+                    _hook(outdated, ProCacheHookReason.Outdated);
+            }
+
             return asyncRes.IsEmpty && waitRes.IsEmpty ?
                 new ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>(syncRes) :
                 GetAsync(asyncRes, waitRes, syncRes, state, cancellation);
         }
 
-        private bool GetOrAdd(Tkey key, out object result)
+        private bool GetOrAdd(Tkey key, out object result, ref List<KeyValuePair<Tkey, ICacheEntry<Tval>>> miss)
         {
             lock (ProCache<Tkey>.GetLock((uint)key.GetHashCode()))
             {
@@ -189,6 +216,9 @@ namespace ProactiveCache
                 var addCompletion = new TaskCompletionSource<(bool, Tval)>();
                 var entry = new ProCacheEntry<Tval>(addCompletion.Task, _outdateTtl);
                 _cache.Set(key, entry, _expireTtl);
+
+                if (_hook != null)
+                    (miss = miss ?? new List<KeyValuePair<Tkey, ICacheEntry<Tval>>>()).Add(new KeyValuePair<Tkey, ICacheEntry<Tval>>(key, entry));
 
                 result = addCompletion;
                 return false;
@@ -241,6 +271,12 @@ namespace ProactiveCache
             }
 
             return results;
+        }
+
+        private static void DoCallback(object state)
+        {
+            var (callback, items, reason) = ((ProCacheBatchHook<Tkey, Tval>, IReadOnlyList<KeyValuePair<Tkey, ICacheEntry<Tval>>>, ProCacheHookReason))state;
+            callback(items, reason);
         }
     }
 }
