@@ -9,11 +9,11 @@ public static class ProCacheFactory
 {
     public class Options<Tk, Tv>
     {
-        public readonly ExternalCacheFactory<Tk, Tv> ExternalCache;
+        public readonly ExternalCacheFactory<Tk, ICacheEntry<Tv>> ExternalCache;
         public readonly TimeSpan ExpireTtl;
         public readonly TimeSpan OutdateTtl;
 
-        public Options(TimeSpan expire_ttl, TimeSpan outdate_ttl, ExternalCacheFactory<Tk, Tv> external_cache = null)
+        public Options(TimeSpan expire_ttl, TimeSpan outdate_ttl, ExternalCacheFactory<Tk, ICacheEntry<Tv>> external_cache = null)
         {
             ExternalCache = external_cache;
             ExpireTtl = expire_ttl;
@@ -21,11 +21,11 @@ public static class ProCacheFactory
         }
     }
 
-    public static Options<Tk, Tv> CreateOptions<Tk, Tv>(ExternalCacheFactory<Tk, Tv> external_cache, TimeSpan expire_ttl, TimeSpan outdate_ttl)
+    public static Options<Tk, Tv> CreateOptions<Tk, Tv>(ExternalCacheFactory<Tk, ICacheEntry<Tv>> external_cache, TimeSpan expire_ttl, TimeSpan outdate_ttl)
         => new Options<Tk, Tv>(expire_ttl, outdate_ttl, external_cache);
 
     public static Options<Tk, Tv> CreateOptions<Tk, Tv>(TimeSpan expire_ttl, TimeSpan outdate_ttl, int cache_expiration_scan_frequency_sec = 600)
-        => new Options<Tk, Tv>(expire_ttl, outdate_ttl, h => new MemoryCache<Tk, Tv>(cache_expiration_scan_frequency_sec, h));
+        => new Options<Tk, Tv>(expire_ttl, outdate_ttl, h => new MemoryCache<Tk, ICacheEntry<Tv>>(cache_expiration_scan_frequency_sec, h));
 
     public static ProCache<Tk, Tv> CreateCache<Tk, Tv>(this Options<Tk, Tv> options, Func<Tk, object, CancellationToken, ValueTask<Tv>> getter, ProCacheHook<Tk, Tv> hook = null)
         => new ProCache<Tk, Tv>(getter, options.ExpireTtl, options.OutdateTtl, hook, options.ExternalCache);

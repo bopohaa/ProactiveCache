@@ -19,9 +19,9 @@ namespace ProactiveCache
         private struct CacheEntry
         {
             private readonly long _expireAt;
-            public readonly ICacheEntry<Tv> Value;
+            public readonly Tv Value;
 
-            public CacheEntry(ICacheEntry<Tv> value, TimeSpan expire_ttl, long now_sec)
+            public CacheEntry(Tv value, TimeSpan expire_ttl, long now_sec)
             {
                 _expireAt = now_sec + expire_ttl.Ticks / TimeSpan.TicksPerSecond;
                 Value = value;
@@ -41,7 +41,7 @@ namespace ProactiveCache
             _expired = expired;
         }
 
-        public void Set(Tk key, ICacheEntry<Tv> value, TimeSpan expiration_time)
+        public void Set(Tk key, Tv value, TimeSpan expiration_time)
         {
             var nowSec = ProCacheTimer.NowSec;
             var entry = new CacheEntry(value, expiration_time, nowSec);
@@ -50,11 +50,11 @@ namespace ProactiveCache
             StartScanForExpiredItemsIfNeeded(nowSec);
         }
 
-        public bool TryGet(Tk key, out ICacheEntry<Tv> value)
+        public bool TryGet(Tk key, out Tv value)
         {
             if (!_entries.TryGetValue(key, out var entry) || entry.IsExpired(ProCacheTimer.NowSec))
             {
-                value = null;
+                value = default(Tv);
                 return false;
             }
 
@@ -78,12 +78,12 @@ namespace ProactiveCache
         {
             var cache = (MemoryCache<Tk, Tv>)state;
             var nowSec = ProCacheTimer.NowSec;
-            var expired = new List<KeyValuePair<Tk, ICacheEntry<Tv>>>();
+            var expired = new List<KeyValuePair<Tk, Tv>>();
             foreach (var entry in cache._entries.ToArray())
             {
                 if (entry.Value.IsExpired(nowSec))
                     if (cache._entries.TryRemove(entry.Key, out var val))
-                        expired.Add(new KeyValuePair<Tk, ICacheEntry<Tv>>(entry.Key, val.Value));
+                        expired.Add(new KeyValuePair<Tk, Tv>(entry.Key, val.Value));
             }
             if (expired.Count > 0 && cache._expired != null)
                 Task.Factory.StartNew(c => cache._expired(expired), null, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);

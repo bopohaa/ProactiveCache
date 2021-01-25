@@ -10,22 +10,22 @@ namespace ProactiveCache
     {
         private const int DEFAULT_CACHE_EXPIRATION_SEC = 600;
 
-        private readonly ICache<Tkey, Tval> _cache;
+        private readonly ICache<Tkey, ICacheEntry<Tval>> _cache;
         private readonly TimeSpan _outdateTtl;
         private readonly TimeSpan _expireTtl;
         private readonly Func<Tkey, object, CancellationToken, ValueTask<Tval>> _get;
         private readonly ProCacheHook<Tkey, Tval> _hook;
 
-        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey,Tval> external_cache = null) :
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null) :
             this(get, expire_ttl, TimeSpan.Zero, hook, external_cache)
         { }
 
-        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, Tval> external_cache = null)
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
 
-            CacheExpiredHook<Tkey, Tval> cacheExpired = null;
+            CacheExpiredHook<Tkey, ICacheEntry<Tval>> cacheExpired = null;
             if (hook != null)
             {
                 cacheExpired = e => { foreach (var i in e) try { hook(i.Key, i.Value, ProCacheHookReason.Expired); } catch { } };
@@ -34,7 +34,7 @@ namespace ProactiveCache
             else
                 _hook = null;
 
-            _cache = external_cache == null ? new MemoryCache<Tkey, Tval>(DEFAULT_CACHE_EXPIRATION_SEC, cacheExpired) : external_cache(cacheExpired);
+            _cache = external_cache == null ? new MemoryCache<Tkey, ICacheEntry<Tval>>(DEFAULT_CACHE_EXPIRATION_SEC, cacheExpired) : external_cache(cacheExpired);
             _outdateTtl = outdate_ttl;
             _expireTtl = expire_ttl;
             _get = get;

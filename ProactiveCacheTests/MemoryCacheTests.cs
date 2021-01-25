@@ -28,7 +28,7 @@ namespace SlidingCacheTests
         {
             var cache = new ProactiveCache.MemoryCache<int, float>(0);
             for (var i = 0; i < SET_COUNT; i++)
-                cache.Set(i, new TestCacheEntry(Task.FromResult((float)i)), InfinityTtl);
+                cache.Set(i, i, InfinityTtl);
 
             Assert.AreEqual(SET_COUNT, cache.Count);
         }
@@ -43,7 +43,7 @@ namespace SlidingCacheTests
             {
                 Assert.IsTrue(cache.TryGet(i, out var val));
                 Assert.AreEqual(values[i], val);
-                Assert.AreEqual((float)i, val.GetValue().Result);
+                Assert.AreEqual((float)i, val);
             }
         }
 
@@ -64,7 +64,7 @@ namespace SlidingCacheTests
             {
                 Assert.IsTrue(cache.TryGet(i, out var val));
                 Assert.AreEqual(values[i], val);
-                Assert.AreEqual((float)i, val.GetValue().Result);
+                Assert.AreEqual((float)i, val);
             }
         }
 
@@ -87,7 +87,7 @@ namespace SlidingCacheTests
             {
                 Assert.IsTrue(cache.TryGet(i, out var val));
                 Assert.AreEqual(values[i], val);
-                Assert.AreEqual((float)i, val.GetValue().Result);
+                Assert.AreEqual((float)i, val);
             }
 
             Task.Delay(1000).Wait();
@@ -102,7 +102,7 @@ namespace SlidingCacheTests
         [Test]
         public void ExpireHookTest()
         {
-            var expired = new List<KeyValuePair<int, ProactiveCache.ICacheEntry<float>>>();
+            var expired = new List<KeyValuePair<int, float>>();
             ProactiveCache.CacheExpiredHook<int, float> expireHook = i => expired.AddRange(i);
             var expiredCnt = SET_COUNT / 2;
             var cache = new ProactiveCache.MemoryCache<int, float>(2, expireHook);
@@ -129,21 +129,21 @@ namespace SlidingCacheTests
             Assert.IsTrue(expired.Count == 0);
         }
 
-        private static void TryCacheClean(int set_key, ICacheEntry<float> set_value, MemoryCache<int, float> cache)
+        private static void TryCacheClean(int set_key, float set_value, MemoryCache<int, float> cache)
         {
             cache.Set(set_key, set_value, InfinityTtl);
             Task.Delay(100).Wait();
         }
 
-        private static TestCacheEntry[] AddToCache(ProactiveCache.MemoryCache<int, float> cache, TimeSpan expiration_ttl, int from_key, int to_key, TestCacheEntry[] tmp = null)
+        private static float[] AddToCache(ProactiveCache.MemoryCache<int, float> cache, TimeSpan expiration_ttl, int from_key, int to_key, float[] tmp = null)
         {
             if (!(tmp is null) && tmp.Length < to_key)
                 Array.Resize(ref tmp, to_key);
 
-            var values = tmp ?? new TestCacheEntry[to_key];
+            var values = tmp ?? new float[to_key];
             for (var i = from_key; i < to_key; i++)
             {
-                values[i] = new TestCacheEntry(Task.FromResult((float)i));
+                values[i] = i;
                 cache.Set(i, values[i], expiration_ttl);
             }
 
