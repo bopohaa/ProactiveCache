@@ -201,19 +201,21 @@ namespace SlidingCacheTests
         [Test]
         public void HookTest()
         {
-            int miss = 0, outdated = 0, expired = 0;
+            var miss = new List<int>();
+            var outdated = new List<int>();
+            var expired = new List<int>();
             ProactiveCache.ProCacheHook<int, float> hook = (k, v, r) =>
             {
                 switch (r)
                 {
                     case ProactiveCache.ProCacheHookReason.Miss:
-                        Interlocked.Increment(ref miss);
+                        miss.Add(k);
                         break;
                     case ProactiveCache.ProCacheHookReason.Outdated:
-                        Interlocked.Increment(ref outdated);
+                        outdated.Add(k);
                         break;
                     case ProactiveCache.ProCacheHookReason.Expired:
-                        Interlocked.Increment(ref expired);
+                        expired.Add(k);
                         break;
                 }
             };
@@ -222,15 +224,19 @@ namespace SlidingCacheTests
                 .CreateCache(SimpleGetter, hook);
 
             cache.Get(1);
-            Task.Delay(1100).Wait();
-            cache.Get(1);
-            Task.Delay(2100).Wait();
             cache.Get(2);
+            cache.Get(3);
+            Task.Delay(1100).Wait();
+            cache.Get(2);
+            cache.Get(3);
+            cache.Get(4);
+            Task.Delay(2100).Wait();
+            cache.Get(5);
             Task.Delay(100).Wait();
 
-            Assert.AreEqual(2, miss);
-            Assert.AreEqual(1, outdated);
-            Assert.AreEqual(1, expired);
+            Assert.That(new[] { 1, 2, 3, 4, 5 }, Is.EquivalentTo(miss.OrderBy(e => e)));
+            Assert.That(new[] { 2, 3 }, Is.EquivalentTo(outdated.OrderBy(e => e)));
+            Assert.That(new[] { 1, 2, 3, 4 }, Is.EquivalentTo(expired.OrderBy(e => e)));
         }
 
         private static async ValueTask<Wrapper> Getter(int k, object state, CancellationToken c)

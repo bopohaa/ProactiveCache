@@ -1,5 +1,7 @@
 ﻿using NUnit.Framework;
+
 using SlidingCacheTests.Internal;
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -256,6 +258,45 @@ namespace SlidingCacheTests
             Assert.AreSame(r1.Value, r5.Value);
         }
 
+        [Test]
+        public void HookTest()
+        {
+            var miss = new List<int>();
+            var outdated = new List<int>();
+            var expired = new List<int>();
+
+            ProactiveCache.ProCacheBatchHook<int, float> hook = (i, r) =>
+            {
+                switch (r)
+                {
+                    case ProactiveCache.ProCacheHookReason.Miss:
+                        miss.AddRange(i.Select(e => e.Key));
+                        break;
+                    case ProactiveCache.ProCacheHookReason.Outdated:
+                        outdated.AddRange(i.Select(e => e.Key));
+                        break;
+                    case ProactiveCache.ProCacheHookReason.Expired:
+                        expired.AddRange(i.Select(e => e.Key));
+                        break;
+                }
+            };
+            var cache = ProCacheFactory
+                .CreateOptions<int, float>(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), 2)
+                .CreateCache(SimpleGetter, hook);
+
+            cache.Get(Enumerable.Range(1, 3));
+            Task.Delay(1100).Wait();
+            cache.Get(Enumerable.Range(2, 3));
+            Task.Delay(2100).Wait();
+            cache.Get(Enumerable.Range(5, 1));
+            Task.Delay(100).Wait();
+
+            Assert.That(new[] { 1, 2, 3, 4, 5 }, Is.EquivalentTo(miss.OrderBy(e => e)));
+            Assert.That(new[] { 2, 3 }, Is.EquivalentTo(outdated.OrderBy(e => e)));
+            Assert.That(new[] { 1, 2, 3, 4 }, Is.EquivalentTo(expired.OrderBy(e => e)));
+        }
+
+
         private static async ValueTask<IEnumerable<KeyValuePair<int, Wrapper>>> Getter(int[] keys, object state, CancellationToken c)
         {
             var counter = (CounterForBatch)state;
@@ -281,6 +322,13 @@ namespace SlidingCacheTests
             counter.TryDoThrow();
 
             return keys.Where(k => k % 2 == 0).Select(k => new KeyValuePair<int, Wrapper>(k, new Wrapper(k)));
+        }
+
+        private static async ValueTask<IEnumerable<KeyValuePair<int, float>>> SimpleGetter(int[] keys, object state, CancellationToken c)
+        {
+            await Task.Delay(10);
+
+            return keys.Select(k => new KeyValuePair<int, float>(k, k));
         }
 
     }
