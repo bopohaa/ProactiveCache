@@ -10,6 +10,7 @@ After this time expires, the first read from the cache initiates the update of t
 In this case, the value request function will receive a list of keys whose values need to be updated or added to the cache.
 If as a result of the operation of such a function, the values of not all the requested keys are returned, then the missing values will be marked as "empty" and will not be included in the result,
 but at the same time I will be requested again after the cache time has expired.
+* A special implementation of the hooks mechanism will allow you to track some events that occur inside the cache (miss - the value is not in the cache, outdated - the value needs to be updated, expired - the value has been removed from the cache).
 
 ## Performance issues
 * The time of relevance (time before the value of `outdate_ttl` expires) of the value in the cache must be long enough so that there are no duplicate update requests.
