@@ -1,11 +1,23 @@
 ﻿using ProactiveCache.Internal;
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace ProactiveCache
 {
+    public static class ProCache
+    {
+        public const ushort UNLIMITED_QUEUE_SIZE = ushort.MaxValue;
+
+        internal static void Add<Tkey, Tval>(this List<KeyValuePair<Tkey, Tval>> dst, Tkey key, Tval value)
+        {
+            dst.Add(new KeyValuePair<Tkey, Tval>(key, value));
+        }
+
+    }
+
     public class ProCache<Tkey, Tval>
     {
         private const int DEFAULT_CACHE_EXPIRATION_SEC = 600;
@@ -15,12 +27,14 @@ namespace ProactiveCache
         private readonly TimeSpan _expireTtl;
         private readonly Func<Tkey, object, CancellationToken, ValueTask<Tval>> _get;
         private readonly ProCacheHook<Tkey, Tval> _hook;
+        private readonly ushort _maxQueueLength;
+        private readonly string _queueLimitExceededMessage;
 
-        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null) :
-            this(get, expire_ttl, TimeSpan.Zero, hook, external_cache)
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, ushort max_queue_length = ProCache.UNLIMITED_QUEUE_SIZE, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null) :
+            this(get, expire_ttl, TimeSpan.Zero, max_queue_length, hook, external_cache)
         { }
 
-        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null)
+        public ProCache(Func<Tkey, object, CancellationToken, ValueTask<Tval>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ushort max_queue_size = ProCache.UNLIMITED_QUEUE_SIZE, ProCacheHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
@@ -38,38 +52,66 @@ namespace ProactiveCache
             _outdateTtl = outdate_ttl;
             _expireTtl = expire_ttl;
             _get = get;
+            _maxQueueLength = max_queue_size;
+            _queueLimitExceededMessage = $"Wait queue limit '{_maxQueueLength}' excedeed in ProCache<{typeof(Tkey)},{typeof(Tval)}>";
         }
 
-        public ValueTask<Tval> Get(Tkey key, CancellationToken cancellation = default(CancellationToken))
-            => Get(key, null, cancellation);
-
-        public ValueTask<Tval> Get(Tkey key, object state, CancellationToken cancellation = default(CancellationToken))
+        public ValueTask<Tval> Get(Tkey key, object state = null, CancellationToken cancellation = default(CancellationToken))
         {
-            if (!_cache.TryGet(key, out var res))
-                return Add(key, state, cancellation);
+            if (TryGet(key, out var result, state, cancellation))
+                return result;
 
-            var entry = (ProCacheEntry<Tval>)res;
-            if (_outdateTtl.Ticks > 0 && entry.Outdated())
-                return UpdateAsync(key, entry, state, cancellation);
-
-            return entry.GetValue();
+            throw new ProCacheQueueLimitExceededException(_queueLimitExceededMessage);
         }
 
-        private ValueTask<Tval> Add(Tkey key, object state, CancellationToken cancellation)
+        public bool TryGet(Tkey key, out ValueTask<Tval> result, object state = null, CancellationToken cancellation = default(CancellationToken))
         {
-            TaskCompletionSource<(bool, Tval)> completion;
-            ICacheEntry<Tval> entry;
+            ProCacheEntry<Tval> entry;
+            if (_cache.TryGet(key, out var res))
+            {
+                entry = (ProCacheEntry<Tval>)res;
+                if (_outdateTtl.Ticks > 0 && entry.Outdated())
+                {
+                    result = UpdateAsync(key, entry, state, cancellation);
+                    return true;
+                }
+            }
+            else
+                entry = Add(key, state, cancellation);
+
+            return TryEnterWaitQueue(entry, out result);
+        }
+
+        private ProCacheEntry<Tval> Add(Tkey key, object state, CancellationToken cancellation)
+        {
+            TaskCompletionSource<Tval> completion;
+            ProCacheEntry<Tval> entry;
             lock (ProCache<Tkey>.GetLock((uint)key.GetHashCode()))
             {
                 if (_cache.TryGet(key, out var res))
-                    return ((ProCacheEntry<Tval>)res).GetValue();
+                    return (ProCacheEntry<Tval>)res;
 
-                completion = new TaskCompletionSource<(bool, Tval)>();
+                completion = new TaskCompletionSource<Tval>();
                 entry = new ProCacheEntry<Tval>(completion.Task, _outdateTtl);
                 _cache.Set(key, entry, _expireTtl);
             }
 
-            return AddAsync(key, completion, state, entry, cancellation);
+            AddAsync(key, completion, state, entry, cancellation);
+
+            return entry;
+        }
+
+        private bool TryEnterWaitQueue(ProCacheEntry<Tval> entry, out ValueTask<Tval> result)
+        {
+            if (_maxQueueLength == ProCache.UNLIMITED_QUEUE_SIZE || entry.TryEnterQueue(_maxQueueLength))
+            {
+                result = entry.GetValue();
+                return true;
+            }
+
+            result = default;
+            return false;
+
         }
 
         private async ValueTask<Tval> UpdateAsync(Tkey key, ProCacheEntry<Tval> entry, object state, CancellationToken cancellation)
@@ -91,22 +133,41 @@ namespace ProactiveCache
             }
         }
 
-        private async ValueTask<Tval> AddAsync(Tkey key, TaskCompletionSource<(bool, Tval)> completion, object state, ICacheEntry<Tval> entry, CancellationToken cancellation)
+        private void AddAsync(Tkey key, TaskCompletionSource<Tval> completion, object state, ProCacheEntry<Tval> entry, CancellationToken cancellation)
         {
             try
             {
                 _hook?.Invoke(key, entry, ProCacheHookReason.Miss);
 
-                var res = await _get(key, state, cancellation).ConfigureAwait(false);
-                completion.SetResult((true, res));
+                var task = _get(key, state, cancellation);
+                if (task.IsCompleted)
+                {
+                    var res = task.Result;
+                    entry.Reset(res, null);
+                    completion.SetResult(res);
+                }
+                else
+                    AddAsync(task, key, completion, entry);
+            }
+            catch (Exception ex)
+            {
+                _cache.Remove(key);
+                completion.TrySetException(ex);
+            }
+        }
 
-                return res;
+        private async void AddAsync(ValueTask<Tval> task, Tkey key, TaskCompletionSource<Tval> completion, ProCacheEntry<Tval> entry)
+        {
+            try
+            {
+                var res = await task.ConfigureAwait(false);
+                entry.Reset(res, null);
+                completion.SetResult(res);
             }
             catch (Exception ex)
             {
                 _cache.Remove(key);
                 completion.SetException(ex);
-                throw;
             }
         }
 

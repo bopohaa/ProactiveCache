@@ -114,12 +114,12 @@ namespace SlidingCacheTests
         {
             var counter = new Counter();
             var cache = ProCacheFactory
-                .CreateOptions<int, Wrapper>(TimeSpan.FromSeconds(1), TimeSpan.Zero)
+                .CreateOptions<int, Wrapper>(TimeSpan.FromSeconds(2), TimeSpan.Zero)
                 .CreateCache(Getter);
 
             var res1 = cache.Get(1, counter).Result;
             var res2 = cache.Get(1, counter).Result;
-            Task.Delay(1000).Wait();
+            Task.Delay(2100).Wait();
             var res3 = cache.Get(1, counter).Result;
             var res4 = cache.Get(1, counter).Result;
 
@@ -209,28 +209,31 @@ namespace SlidingCacheTests
                 switch (r)
                 {
                     case ProactiveCache.ProCacheHookReason.Miss:
+                        lock(miss)
                         miss.Add(k);
                         break;
                     case ProactiveCache.ProCacheHookReason.Outdated:
+                        lock(outdated)
                         outdated.Add(k);
                         break;
                     case ProactiveCache.ProCacheHookReason.Expired:
+                        lock(expired)
                         expired.Add(k);
                         break;
                 }
             };
             var cache = ProCacheFactory
-                .CreateOptions<int, float>(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), 2)
+                .CreateOptions<int, float>(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1), 1)
                 .CreateCache(SimpleGetter, hook);
 
             cache.Get(1);
             cache.Get(2);
             cache.Get(3);
-            Task.Delay(1100).Wait();
+            Task.Delay(1300).Wait();
             cache.Get(2);
             cache.Get(3);
             cache.Get(4);
-            Task.Delay(2100).Wait();
+            Task.Delay(3100).Wait();
             cache.Get(5);
             Task.Delay(100).Wait();
 

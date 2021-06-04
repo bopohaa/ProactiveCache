@@ -73,7 +73,7 @@ namespace SlidingCacheTests
             var keys = new[] { 1 };
 
             var res1 = cache.Get(keys, counter).Result;
-            Task.Delay(1000).Wait();
+            Task.Delay(1100).Wait();
 
             var res2Task = cache.Get(keys, counter).AsTask();
             var res3Task = cache.Get(keys, counter).AsTask();
@@ -82,7 +82,7 @@ namespace SlidingCacheTests
             var res2 = res2Task.Result;
             var res3 = res3Task.Result;
 
-            Task.Delay(1000).Wait();
+            Task.Delay(1100).Wait();
 
             var res4Task = cache.Get(keys, counter).AsTask();
             var res5Task = cache.Get(keys, counter).AsTask();
@@ -111,7 +111,7 @@ namespace SlidingCacheTests
 
             var res1 = cache.Get(keys, counter).Result;
             var res2 = cache.Get(keys, counter).Result;
-            Task.Delay(1000).Wait();
+            Task.Delay(1100).Wait();
             var res3 = cache.Get(keys, counter).Result;
             var res4 = cache.Get(keys, counter).Result;
 
@@ -281,13 +281,13 @@ namespace SlidingCacheTests
                 }
             };
             var cache = ProCacheFactory
-                .CreateOptions<int, float>(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), 2)
+                .CreateOptions<int, float>(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1), 1)
                 .CreateCache(SimpleGetter, hook);
 
             cache.Get(Enumerable.Range(1, 3));
-            Task.Delay(1100).Wait();
+            Task.Delay(1300).Wait();
             cache.Get(Enumerable.Range(2, 3));
-            Task.Delay(2100).Wait();
+            Task.Delay(3100).Wait();
             cache.Get(Enumerable.Range(5, 1));
             Task.Delay(100).Wait();
 
