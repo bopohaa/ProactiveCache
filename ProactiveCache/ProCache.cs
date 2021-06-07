@@ -96,7 +96,7 @@ namespace ProactiveCache
                 _cache.Set(key, entry, _expireTtl);
             }
 
-            AddAsync(key, completion, state, entry, cancellation);
+            var _ = AddAsync(key, completion, state, entry, cancellation);
 
             return entry;
         }
@@ -133,41 +133,24 @@ namespace ProactiveCache
             }
         }
 
-        private void AddAsync(Tkey key, TaskCompletionSource<Tval> completion, object state, ProCacheEntry<Tval> entry, CancellationToken cancellation)
+        private async ValueTask<Tval> AddAsync(Tkey key, TaskCompletionSource<Tval> completion, object state, ProCacheEntry<Tval> entry, CancellationToken cancellation)
         {
             try
             {
                 _hook?.Invoke(key, entry, ProCacheHookReason.Miss);
 
-                var task = _get(key, state, cancellation);
-                if (task.IsCompleted)
-                {
-                    var res = task.Result;
-                    entry.Reset(res, null);
-                    completion.SetResult(res);
-                }
-                else
-                    AddAsync(task, key, completion, entry);
+                var res = await _get(key, state, cancellation).ConfigureAwait(false);
+                entry.Reset(res, null);
+                completion.SetResult(res);
+
+                return res;
             }
             catch (Exception ex)
             {
                 _cache.Remove(key);
                 completion.TrySetException(ex);
-            }
-        }
 
-        private async void AddAsync(ValueTask<Tval> task, Tkey key, TaskCompletionSource<Tval> completion, ProCacheEntry<Tval> entry)
-        {
-            try
-            {
-                var res = await task.ConfigureAwait(false);
-                entry.Reset(res, null);
-                completion.SetResult(res);
-            }
-            catch (Exception ex)
-            {
-                _cache.Remove(key);
-                completion.SetException(ex);
+                throw;
             }
         }
 
