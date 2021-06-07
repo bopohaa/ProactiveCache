@@ -114,12 +114,12 @@ namespace SlidingCacheTests
         {
             var counter = new Counter();
             var cache = ProCacheFactory
-                .CreateOptions<int, Wrapper>(TimeSpan.FromSeconds(1), TimeSpan.Zero)
+                .CreateOptions<int, Wrapper>(TimeSpan.FromSeconds(2), TimeSpan.Zero)
                 .CreateCache(Getter);
 
             var res1 = cache.Get(1, counter).Result;
             var res2 = cache.Get(1, counter).Result;
-            Task.Delay(1000).Wait();
+            Task.Delay(2100).Wait();
             var res3 = cache.Get(1, counter).Result;
             var res4 = cache.Get(1, counter).Result;
 
@@ -209,28 +209,31 @@ namespace SlidingCacheTests
                 switch (r)
                 {
                     case ProactiveCache.ProCacheHookReason.Miss:
+                        lock(miss)
                         miss.Add(k);
                         break;
                     case ProactiveCache.ProCacheHookReason.Outdated:
+                        lock(outdated)
                         outdated.Add(k);
                         break;
                     case ProactiveCache.ProCacheHookReason.Expired:
+                        lock(expired)
                         expired.Add(k);
                         break;
                 }
             };
             var cache = ProCacheFactory
-                .CreateOptions<int, float>(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), 2)
+                .CreateOptions<int, float>(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1), 1)
                 .CreateCache(SimpleGetter, hook);
 
             cache.Get(1);
             cache.Get(2);
             cache.Get(3);
-            Task.Delay(1100).Wait();
+            Task.Delay(1300).Wait();
             cache.Get(2);
             cache.Get(3);
             cache.Get(4);
-            Task.Delay(2100).Wait();
+            Task.Delay(3100).Wait();
             cache.Get(5);
             Task.Delay(100).Wait();
 
@@ -238,6 +241,58 @@ namespace SlidingCacheTests
             Assert.That(new[] { 2, 3 }, Is.EquivalentTo(outdated.OrderBy(e => e)));
             Assert.That(new[] { 1, 2, 3, 4 }, Is.EquivalentTo(expired.OrderBy(e => e)));
         }
+
+        [Test]
+        public void GetWithQueueTest()
+        {
+            var cache = ProCacheFactory
+                .CreateOptions<int, float>(TimeSpan.FromSeconds(2), TimeSpan.Zero, 600, 2)
+                .CreateCache(SimpleGetter);
+
+            var res1Comp = cache.TryGet(1, out var res1);
+            var res2Comp = cache.TryGet(1, out var res2);
+            var res3Comp = cache.TryGet(1, out var res3);
+
+            Assert.IsTrue(res1Comp);
+            Assert.IsTrue(res2Comp);
+            Assert.IsFalse(res3Comp);
+
+            Task.WaitAll(res1.AsTask(), res2.AsTask(), res3.AsTask());
+
+            var res4Comp = cache.TryGet(1, out var _);
+            var res5Comp = cache.TryGet(1, out var _);
+            var res6Comp = cache.TryGet(1, out var _);
+
+            Assert.IsTrue(res4Comp);
+            Assert.IsTrue(res5Comp);
+            Assert.IsTrue(res6Comp);
+        }
+
+        [Test]
+        public void GetWithQueueSyncTest()
+        {
+            var cache = ProCacheFactory
+                .CreateOptions<int, int>(TimeSpan.FromSeconds(2), TimeSpan.Zero, 600, 0)
+                .CreateCache(SyncSimpleGetter);
+
+            var res1Comp = cache.TryGet(1, out var res1);
+            var res2Comp = cache.TryGet(1, out var res2);
+
+            var res3Comp = cache.TryGet(2, out var res3);
+            var res4Comp = cache.TryGet(2, out var res4);
+
+            Assert.IsTrue(res1.IsCompletedSuccessfully);
+            Assert.IsTrue(res2.IsCompletedSuccessfully);
+            Assert.IsTrue(res1Comp);
+            Assert.IsTrue(res2Comp);
+
+            Assert.IsTrue(res3.IsCompletedSuccessfully);
+            Assert.IsTrue(res4.IsCompletedSuccessfully);
+            Assert.IsFalse(res3Comp);
+            Assert.IsFalse(res4Comp);
+
+        }
+
 
         private static async ValueTask<Wrapper> Getter(int k, object state, CancellationToken c)
         {
@@ -257,5 +312,11 @@ namespace SlidingCacheTests
             return k;
         }
 
+        private static async ValueTask<int> SyncSimpleGetter(int k, object state, CancellationToken c)
+        {
+            if (k % 2 == 0)
+                await Task.Delay(10);
+            return k;
+        }
     }
 }

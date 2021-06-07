@@ -7,4 +7,10 @@ namespace ProactiveCache
         bool IsCompleted { get; }
         ValueTask<Tval> GetValue();
     }
+
+    public interface ICacheBatchEntry<Tval>
+    {
+        bool IsCompleted { get; }
+        ValueTask<(bool, Tval)> GetValue();
+    }
 }

@@ -73,7 +73,7 @@ namespace SlidingCacheTests
             var keys = new[] { 1 };
 
             var res1 = cache.Get(keys, counter).Result;
-            Task.Delay(1000).Wait();
+            Task.Delay(1100).Wait();
 
             var res2Task = cache.Get(keys, counter).AsTask();
             var res3Task = cache.Get(keys, counter).AsTask();
@@ -82,7 +82,7 @@ namespace SlidingCacheTests
             var res2 = res2Task.Result;
             var res3 = res3Task.Result;
 
-            Task.Delay(1000).Wait();
+            Task.Delay(1100).Wait();
 
             var res4Task = cache.Get(keys, counter).AsTask();
             var res5Task = cache.Get(keys, counter).AsTask();
@@ -111,7 +111,7 @@ namespace SlidingCacheTests
 
             var res1 = cache.Get(keys, counter).Result;
             var res2 = cache.Get(keys, counter).Result;
-            Task.Delay(1000).Wait();
+            Task.Delay(1100).Wait();
             var res3 = cache.Get(keys, counter).Result;
             var res4 = cache.Get(keys, counter).Result;
 
@@ -281,19 +281,48 @@ namespace SlidingCacheTests
                 }
             };
             var cache = ProCacheFactory
-                .CreateOptions<int, float>(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), 2)
+                .CreateOptions<int, float>(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1), 1)
                 .CreateCache(SimpleGetter, hook);
 
             cache.Get(Enumerable.Range(1, 3));
-            Task.Delay(1100).Wait();
+            Task.Delay(1300).Wait();
             cache.Get(Enumerable.Range(2, 3));
-            Task.Delay(2100).Wait();
+            Task.Delay(3100).Wait();
             cache.Get(Enumerable.Range(5, 1));
             Task.Delay(100).Wait();
 
             Assert.That(new[] { 1, 2, 3, 4, 5 }, Is.EquivalentTo(miss.OrderBy(e => e)));
             Assert.That(new[] { 2, 3 }, Is.EquivalentTo(outdated.OrderBy(e => e)));
             Assert.That(new[] { 1, 2, 3, 4 }, Is.EquivalentTo(expired.OrderBy(e => e)));
+        }
+
+        [Test]
+        public void GetWithQueueTest()
+        {
+            var cache = ProCacheFactory
+                .CreateOptions<int, float>(InfinityTtl, InfinityTtl, 600, 1)
+                .CreateCache(SimpleGetter);
+            var keys1 = Enumerable.Range(0, SET_COUNT);
+            var keys2 = Enumerable.Range(SET_COUNT-1, SET_COUNT);
+            var keys3 = Enumerable.Range(SET_COUNT, SET_COUNT);
+
+            var res1Comp = cache.TryGet(keys1, out var res1);
+            var res2Comp = cache.TryGet(keys2, out var res2);
+            var res3Comp = cache.TryGet(keys3, out var res3);
+
+            Assert.IsTrue(res1Comp);
+            Assert.IsFalse(res2Comp);
+            Assert.IsTrue(res3Comp);
+
+            Task.WaitAll(res1.AsTask(), res2.AsTask(), res3.AsTask());
+
+            var res4Comp = cache.TryGet(keys1, out var _);
+            var res5Comp = cache.TryGet(keys2, out var _);
+            var res6Comp = cache.TryGet(keys3, out var _);
+
+            Assert.IsTrue(res4Comp);
+            Assert.IsTrue(res5Comp);
+            Assert.IsTrue(res6Comp);
         }
 
 
