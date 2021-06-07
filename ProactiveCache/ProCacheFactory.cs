@@ -36,8 +36,8 @@ public static class ProCacheFactory
         => new ProCache<Tk, Tv>((k, _, c) => getter(k, c), options.ExpireTtl, options.OutdateTtl, options.MaxQueueLength, hook, options.ExternalCache);
 
     public static ProCacheBatch<Tk, Tv> CreateCache<Tk, Tv>(this Options<Tk, Tv> options, Func<Tk[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tk, Tv>>>> getter, ProCacheBatchHook<Tk, Tv> hook = null)
-        => new ProCacheBatch<Tk, Tv>(getter, options.ExpireTtl, options.OutdateTtl, hook, options.ExternalCache);
+        => new ProCacheBatch<Tk, Tv>(getter, options.ExpireTtl, options.OutdateTtl, options.MaxQueueLength, hook, options.ExternalCache);
 
     public static ProCacheBatch<Tk, Tv> CreateCache<Tk, Tv>(this Options<Tk, Tv> options, Func<Tk[], CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tk, Tv>>>> getter, ProCacheBatchHook<Tk, Tv> hook = null)
-        => new ProCacheBatch<Tk, Tv>((k, _, c) => getter(k, c), options.ExpireTtl, options.OutdateTtl, hook, options.ExternalCache);
+        => new ProCacheBatch<Tk, Tv>((k, _, c) => getter(k, c), options.ExpireTtl, options.OutdateTtl, options.MaxQueueLength, hook, options.ExternalCache);
 }

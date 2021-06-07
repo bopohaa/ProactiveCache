@@ -14,11 +14,11 @@ namespace ProactiveCache.Internal
 
         private long _outdatedSec;
         private object _value;
-        private uint _data;
+        private int _data;
 
-        protected object Value => Volatile.Read(ref _value);
-        internal bool IsEmpty => (Volatile.Read(ref _data) & ISEMPTY_MASK) > 0;
-        protected bool HasValue => (Volatile.Read(ref _data) & HASVALUE_MASK) > 0;
+        private object Value => Volatile.Read(ref _value);
+        internal bool IsEmpty => (unchecked((uint)Volatile.Read(ref _data)) & ISEMPTY_MASK) > 0;
+        private bool HasValue => (unchecked((uint)Volatile.Read(ref _data)) & HASVALUE_MASK) > 0;
 
         private readonly Task<Tval> _valueAsTask;
         public bool IsCompleted => HasValue ? true : _valueAsTask.IsCompleted;
@@ -60,7 +60,7 @@ namespace ProactiveCache.Internal
         internal void Reset(Tval value, TimeSpan? outdated_ttl)
         {
             Volatile.Write(ref _value, value);
-            Volatile.Write(ref _data, HASVALUE_MASK);
+            Volatile.Write(ref _data, unchecked((int)HASVALUE_MASK));
 
             if (outdated_ttl.HasValue)
                 _outdatedSec = GetOutdatedSec(outdated_ttl.Value);
@@ -69,7 +69,7 @@ namespace ProactiveCache.Internal
         internal void Reset(TimeSpan? outdated_ttl)
         {
             Volatile.Write(ref _value, default(Tval));
-            Volatile.Write(ref _data, ISEMPTY_MASK | HASVALUE_MASK);
+            Volatile.Write(ref _data, unchecked((int)(ISEMPTY_MASK | HASVALUE_MASK)));
             if (outdated_ttl.HasValue)
                 _outdatedSec = GetOutdatedSec(outdated_ttl.Value);
         }
@@ -84,10 +84,10 @@ namespace ProactiveCache.Internal
             if (HasValue || IsCompletedTask)
                 return true;
 
-            if ((_data & QUEUESIZE_MASK) >= max_queue_size)
+            if ((unchecked((uint)_data) & QUEUESIZE_MASK) >= max_queue_size)
                 return false;
 
-            return (Interlocked.Increment(ref Unsafe.As<uint, int>(ref _data)) & QUEUESIZE_MASK) <= max_queue_size;
+            return (unchecked((uint)Interlocked.Increment(ref _data)) & QUEUESIZE_MASK) <= max_queue_size;
         }
 
         private static long GetOutdatedSec(TimeSpan outdated_ttl)

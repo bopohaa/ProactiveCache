@@ -97,7 +97,6 @@ namespace ProactiveCache
 
                 _vals.Add(key, val);
             }
-
         }
 
         private readonly ICache<Tkey, ICacheEntry<Tval>> _cache;
@@ -110,11 +109,11 @@ namespace ProactiveCache
         private readonly string _queueLimitExceededMessage;
 
 
-        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, ushort max_queue_length = ProCache.UNLIMITED_QUEUE_SIZE, ProCacheBatchHook<Tkey, Tval> hook, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null) :
+        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, ushort max_queue_length = ProCache.UNLIMITED_QUEUE_SIZE, ProCacheBatchHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null) :
             this(get, expire_ttl, TimeSpan.Zero, max_queue_length, hook, external_cache)
         { }
 
-        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ushort max_queue_length = ProCache.UNLIMITED_QUEUE_SIZE, ProCacheBatchHook<Tkey, Tval> hook, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null)
+        public ProCacheBatch(Func<Tkey[], object, CancellationToken, ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>> get, TimeSpan expire_ttl, TimeSpan outdate_ttl, ushort max_queue_length = ProCache.UNLIMITED_QUEUE_SIZE, ProCacheBatchHook<Tkey, Tval> hook = null, ExternalCacheFactory<Tkey, ICacheEntry<Tval>> external_cache = null)
         {
             if (outdate_ttl > expire_ttl)
                 throw new ArgumentException("Must be less expire ttl", nameof(outdate_ttl));
@@ -151,6 +150,7 @@ namespace ProactiveCache
             var syncRes = new List<KeyValuePair<Tkey, Tval>>();
             var asyncRes = new AsyncList();
             var waitRes = new WaitList();
+            result = default;
             List<KeyValuePair<Tkey, ICacheEntry<Tval>>> miss = null;
             List<KeyValuePair<Tkey, ICacheEntry<Tval>>> outdated = null;
             foreach (var key in keys)
@@ -162,7 +162,11 @@ namespace ProactiveCache
                     {
                         if (_withSlidingUpdate && entry.Outdated())
                         {
-                            asyncRes.Add(key, new Result(entry));
+                            if (TryEnterQueue(entry))
+                                asyncRes.Add(key, new Result(entry));
+                            else
+                                return false;
+
                             if (_hook != null)
                                 (outdated = outdated ?? new List<KeyValuePair<Tkey, ICacheEntry<Tval>>>()).Add(new KeyValuePair<Tkey, ICacheEntry<Tval>>(key, entry));
                         }
@@ -170,7 +174,12 @@ namespace ProactiveCache
                             syncRes.Add(key, entry.GetCompletedValue());
                     }
                     else
-                        waitRes.Add(key, entry);
+                    {
+                        if (TryEnterQueue(entry))
+                            waitRes.Add(key, entry);
+                        else
+                            return false;
+                    }
                 }
                 else
                 {
@@ -178,12 +187,23 @@ namespace ProactiveCache
                     if (exist)
                     {
                         if (!entry.IsCompleted)
-                            waitRes.Add(key, entry);
+                        {
+                            if (TryEnterQueue(entry))
+                                waitRes.Add(key, entry);
+                            else
+                                return false;
+                        }
                         else if (!entry.IsEmpty)
                             syncRes.Add(key, entry.GetCompletedValue());
                     }
                     else
-                        asyncRes.Add(key, new Result(entry, completion));
+                    {
+                        if (TryEnterQueue(entry))
+                            asyncRes.Add(key, new Result(entry, completion));
+                        else
+                            return false;
+                    }
+                        
                 }
             }
 
@@ -201,9 +221,9 @@ namespace ProactiveCache
                 return true;
             }
 
-            return asyncRes.IsEmpty && waitRes.IsEmpty ?
-                new ValueTask<IEnumerable<KeyValuePair<Tkey, Tval>>>(syncRes) :
-                GetAsync(asyncRes, waitRes, syncRes, state, cancellation);
+            result = GetAsync(asyncRes, waitRes, syncRes, state, cancellation);
+
+            return true;
         }
 
         private bool GetOrAdd(Tkey key, out ProCacheEntry<Tval> entry, out TaskCompletionSource<Tval> completion, ref List<KeyValuePair<Tkey, ICacheEntry<Tval>>> miss)
@@ -275,6 +295,9 @@ namespace ProactiveCache
 
             return results;
         }
+
+        private bool TryEnterQueue(ProCacheEntry<Tval> entry) =>
+            _maxQueueLength == ProCache.UNLIMITED_QUEUE_SIZE || entry.TryEnterQueue(_maxQueueLength);
 
         private static void DoCallback(object state)
         {

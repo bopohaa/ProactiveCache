@@ -296,6 +296,35 @@ namespace SlidingCacheTests
             Assert.That(new[] { 1, 2, 3, 4 }, Is.EquivalentTo(expired.OrderBy(e => e)));
         }
 
+        [Test]
+        public void GetWithQueueTest()
+        {
+            var cache = ProCacheFactory
+                .CreateOptions<int, float>(InfinityTtl, InfinityTtl, 600, 1)
+                .CreateCache(SimpleGetter);
+            var keys1 = Enumerable.Range(0, SET_COUNT);
+            var keys2 = Enumerable.Range(SET_COUNT-1, SET_COUNT);
+            var keys3 = Enumerable.Range(SET_COUNT, SET_COUNT);
+
+            var res1Comp = cache.TryGet(keys1, out var res1);
+            var res2Comp = cache.TryGet(keys2, out var res2);
+            var res3Comp = cache.TryGet(keys3, out var res3);
+
+            Assert.IsTrue(res1Comp);
+            Assert.IsFalse(res2Comp);
+            Assert.IsTrue(res3Comp);
+
+            Task.WaitAll(res1.AsTask(), res2.AsTask(), res3.AsTask());
+
+            var res4Comp = cache.TryGet(keys1, out var _);
+            var res5Comp = cache.TryGet(keys2, out var _);
+            var res6Comp = cache.TryGet(keys3, out var _);
+
+            Assert.IsTrue(res4Comp);
+            Assert.IsTrue(res5Comp);
+            Assert.IsTrue(res6Comp);
+        }
+
 
         private static async ValueTask<IEnumerable<KeyValuePair<int, Wrapper>>> Getter(int[] keys, object state, CancellationToken c)
         {
